@@ -2,37 +2,34 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"web-app-analyser-service/collector"
 )
 
 type WebUrl struct {
 	logger *log.Logger
 }
 
-type UrlString string
-
 func NewWebUrl(logger *log.Logger) *WebUrl {
 	return &WebUrl{logger}
 }
 
-func (urlString *UrlString) validate() (err string) {
-	if *urlString == "" {
+func validate(str *string) (err string) {
+	if *str == "" {
 		return "URL param is empty"
 	}
-	if !urlString.IsUrl() {
+	if !IsUrl(str) {
 		return "Invalid URL"
 	}
 	return ""
 }
 
-func (urlString *UrlString) IsUrl() bool {
-	str := string(*urlString)
-	url, err := url.ParseRequestURI(str)
+func IsUrl(str *string) bool {
+	url, err := url.ParseRequestURI(*str)
 	if err != nil {
 		return false
 	}
@@ -48,9 +45,9 @@ func (urlString *UrlString) IsUrl() bool {
 func (webUrl *WebUrl) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
 	webUrl.logger.Println("request came in : ", request.RequestURI)
 
-	urlString := UrlString(request.URL.Query().Get("url"))
+	url := request.URL.Query().Get("url")
 
-	if err := urlString.validate(); err != "" {
+	if err := validate(&url); err != "" {
 		webUrl.logger.Println("Error :", err)
 		err := map[string]interface{}{"data": err}
 		responseWriter.Header().Set("Content-type", "application/json")
@@ -59,6 +56,8 @@ func (webUrl *WebUrl) ServeHTTP(responseWriter http.ResponseWriter, request *htt
 		return
 	}
 
-	webUrl.logger.Println(urlString)
-	fmt.Fprintf(responseWriter, "working and the query param is : %s", urlString)
+	data := *collector.GetLinkList(url)
+	webUrl.logger.Println("data :", data)
+	responseWriter.Header().Set("Content-type", "application/json")
+	json.NewEncoder(responseWriter).Encode(data)
 }

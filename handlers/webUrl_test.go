@@ -5,7 +5,7 @@ import "testing"
 func TestUrlString_IsUrl(t *testing.T) {
 	tests := []struct {
 		name      string
-		urlString UrlString
+		urlString string
 		want      bool
 	}{
 		{"correct URL HTTPS", "https://google.com", true},
@@ -17,7 +17,7 @@ func TestUrlString_IsUrl(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.urlString.IsUrl(); got != tt.want {
+			if got := IsUrl(&tt.urlString); got != tt.want {
 				t.Errorf("IsUrl() = %v, want %v", got, tt.want)
 			}
 		})
