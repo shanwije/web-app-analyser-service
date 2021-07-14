@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/gocolly/colly"
 	"log"
-	url2 "net/url"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -31,24 +31,24 @@ type HeadingCount struct {
 }
 
 type AppData struct {
-	HtmlVersion string `json:"html_version"`
-	Title string `json:"title"`
+	HtmlVersion  string       `json:"html_version"`
+	Title        string       `json:"title"`
 	HeadingCount HeadingCount `json:"heading_count"`
-	Links []Link `json:"links"`
-	HasLogin bool `json:"has_login"`
+	Links        []Link       `json:"links"`
+	HasLogin     bool         `json:"has_login"`
 }
 
 var docTypes = make(map[string]string)
 
 func init() {
-	docTypes["HTML 4.01 Strict"] = `"-//W3C//DTD HTML 4.01//EN"`
-	docTypes["HTML 4.01 Transitional"] = `"-//W3C//DTD HTML 4.01 Transitional//EN"`
-	docTypes["HTML 4.01 Frameset"] = `"-//W3C//DTD HTML 4.01 Frameset//EN"`
-	docTypes["XHTML 1.0 Strict"] = `"-//W3C//DTD XHTML 1.0 Strict//EN"`
-	docTypes["XHTML 1.0 Transitional"] = `"-//W3C//DTD XHTML 1.0 Transitional//EN"`
-	docTypes["XHTML 1.0 Frameset"] = `"-//W3C//DTD XHTML 1.0 Frameset//EN"`
-	docTypes["XHTML 1.1"] = `"-//W3C//DTD XHTML 1.1//EN"`
-	docTypes["HTML 5"] = `<!DOCTYPE html>`
+	docTypes[HTML401_STRICT] = `"-//W3C//DTD HTML 4.01//EN"`
+	docTypes[HTML401_TRANSITIONAL] = `"-//W3C//DTD HTML 4.01 Transitional//EN"`
+	docTypes[HTML401_FRAMESET] = `"-//W3C//DTD HTML 4.01 Frameset//EN"`
+	docTypes[XHTML10_STRICT] = `"-//W3C//DTD XHTML 1.0 Strict//EN"`
+	docTypes[XHTML11_TRANSITIONAL] = `"-//W3C//DTD XHTML 1.0 Transitional//EN"`
+	docTypes[XHTML11_FRAMESET] = `"-//W3C//DTD XHTML 1.0 Frameset//EN"`
+	docTypes[XHTML11] = `"-//W3C//DTD XHTML 1.1//EN"`
+	docTypes[HTML5] = `<!DOCTYPE html>`
 }
 
 func (appData *AppData) AddLink(l Link) {
@@ -58,11 +58,11 @@ func (appData *AppData) AddLink(l Link) {
 func GetAppData(url string) *AppData {
 	appData := &AppData{}
 	appData.setPageInfo(url)
-	//appData.setLinkList(url)
+	appData.setLinkList(url)
 	return appData
 }
 
-func (appData *AppData) setPageInfo(url string)  {
+func (appData *AppData) setPageInfo(url string) {
 	c := colly.NewCollector(
 		colly.IgnoreRobotsTxt(),
 		colly.Async(true),
@@ -74,44 +74,51 @@ func (appData *AppData) setPageInfo(url string)  {
 		log.Println("visiting", r.URL.String())
 	})
 
-	c.OnHTML("html" , func(e *colly.HTMLElement) {
+	c.OnHTML("html", func(element *colly.HTMLElement) {
 		//setting up the title
-		appData.Title = e.ChildText("title")
-
+		appData.Title = element.ChildText("title")
 		// set header tags count
-		e.ForEach("h1, h2, h3, h4, h5, h6", func(_ int, el *colly.HTMLElement) {
-			switch el.Name {
-			case "h1":
-				appData.HeadingCount.H1Count += 1
-			case "h2":
-				appData.HeadingCount.H2Count += 1
-			case "h3":
-				appData.HeadingCount.H3Count += 1
-			case "h4":
-				appData.HeadingCount.H4Count += 1
-			case "h5":
-				appData.HeadingCount.H5Count += 1
-			case "h6":
-				appData.HeadingCount.H6Count += 1
-			}
-		})
-
+		appData.setHeaderCount(element)
 		// has login
-		e.ForEach("input", func(i int, el *colly.HTMLElement) {
-			if el.Attr("type") == "password"{
-				appData.HasLogin = true
-			}
-		})
+		appData.setIsLogin(element)
 	})
 
+	c.OnResponse(func(response *colly.Response) {
+		appData.HtmlVersion = setHTMLVersion(string(response.Body))
+	})
 
 	c.Visit(url)
 	c.Wait()
-
-	log.Printf("Scraping finished")
 }
 
-func (appData *AppData) setLinkList(url string) {
+func (appData *AppData) setHeaderCount(element *colly.HTMLElement) {
+	element.ForEach("h1, h2, h3, h4, h5, h6", func(_ int, el *colly.HTMLElement) {
+		switch el.Name {
+		case H1:
+			appData.HeadingCount.H1Count += 1
+		case H2:
+			appData.HeadingCount.H2Count += 1
+		case H3:
+			appData.HeadingCount.H3Count += 1
+		case H4:
+			appData.HeadingCount.H4Count += 1
+		case H5:
+			appData.HeadingCount.H5Count += 1
+		case H6:
+			appData.HeadingCount.H6Count += 1
+		}
+	})
+}
+
+func (appData *AppData) setIsLogin(e *colly.HTMLElement) {
+	e.ForEach("input", func(i int, el *colly.HTMLElement) {
+		if el.Attr("type") == "password" {
+			appData.HasLogin = true
+		}
+	})
+}
+
+func (appData *AppData) setLinkList(baseUrl string) {
 
 	depth := 2
 	threads := 4
@@ -119,14 +126,15 @@ func (appData *AppData) setLinkList(url string) {
 	flag.Parse()
 
 	c := colly.NewCollector(
-			colly.Async(true),
-			colly.MaxDepth(depth),
-			colly.IgnoreRobotsTxt(),
-			colly.URLFilters(
+		colly.Async(true),
+		colly.MaxDepth(depth),
+		colly.IgnoreRobotsTxt(),
+		colly.URLFilters(
 			regexp.MustCompile("https?://.+$"),
 		),
 	)
 	c.SetRequestTimeout(time.Second * 10)
+	c.AllowURLRevisit = false
 	c.AllowURLRevisit = false
 
 	limitError := c.Limit(&colly.LimitRule{
@@ -147,22 +155,34 @@ func (appData *AppData) setLinkList(url string) {
 	})
 
 	c.OnResponse(func(response *colly.Response) {
-		baseUrl, _ := url2.Parse(url)
+		baseUrl, _ := url.Parse(baseUrl)
 		link := Link{
 			Url:        response.Request.URL.String(),
 			Status:     response.StatusCode,
-			IsInternal: isInternalLink(response, baseUrl),
+			IsInternal: isInternalLink(response.Request.URL, baseUrl),
 		}
 		appData.AddLink(link)
 	})
 
-	c.Visit(url)
+	c.Visit(baseUrl)
 	c.Wait()
 }
 
 // here subdomains considered as external
-func isInternalLink(response *colly.Response, baseUrl *url2.URL) bool {
-	return baseUrl.Host == response.Request.URL.Host
+func isInternalLink(url *url.URL, baseUrl *url.URL) bool {
+	return baseUrl.Host == url.Host
+}
+
+func setHTMLVersion(html string) string {
+	var version = UNKNOWN
+	for doctype, matcher := range docTypes {
+		match := strings.Contains(html, matcher)
+		if match == true {
+			version = doctype
+			break
+		}
+	}
+	return version
 }
 
 func handleError(error error) {
@@ -170,22 +190,3 @@ func handleError(error error) {
 		fmt.Println("Error:", error)
 	}
 }
-
-
-
-func checkDoctype(html string) string {
-	var version = "UNKNOWN"
-
-	for doctype, matcher := range docTypes {
-		match := strings.Contains(html, matcher)
-
-		if match == true {
-			version = doctype
-		}
-	}
-
-	return version
-}
-
-
-
