@@ -56,7 +56,7 @@ func (webUrl *WebUrl) ServeHTTP(responseWriter http.ResponseWriter, request *htt
 		return
 	}
 
-	data := *collector.GetLinkList(url)
+	data := *collector.GetAppData(url)
 	webUrl.logger.Println("data :", data)
 	responseWriter.Header().Set("Content-type", "application/json")
 	json.NewEncoder(responseWriter).Encode(data)
