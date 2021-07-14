@@ -10,9 +10,10 @@ import (
 	"web-app-analyser-service/handlers"
 )
 
+//todo comments, logs, tests, packaging, namingConv, docker, error handling
 func main() {
 	logger := log.New(os.Stdout, "web-app-analyser-service", log.LstdFlags)
-	webUrlHandler := handlers.NewWebUrl(logger)
+	webUrlHandler := handlers.NewPageAnalytics(logger)
 
 	serveMux := http.NewServeMux()
 	serveMux.Handle("/", webUrlHandler)
@@ -29,6 +30,7 @@ func main() {
 		if err != nil {
 			logger.Fatal(err)
 		}
+		log.Println("Server started")
 	}()
 
 	signalChannel := make(chan os.Signal)
@@ -38,6 +40,6 @@ func main() {
 	sig := <-signalChannel
 	log.Println("Received terminate signal, shutting down : ", sig)
 
-	timeoutContext, _ := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
+	timeoutContext, _ := context.WithDeadline(context.Background(), time.Now().Add(3*time.Second))
 	server.Shutdown(timeoutContext)
 }

@@ -10,15 +10,15 @@ import (
 	"web-app-analyser-service/collector"
 )
 
-type WebUrl struct {
+type pageAnalytics struct {
 	logger *log.Logger
 }
 
-func NewWebUrl(logger *log.Logger) *WebUrl {
-	return &WebUrl{logger}
+func NewPageAnalytics(logger *log.Logger) *pageAnalytics {
+	return &pageAnalytics{logger}
 }
 
-func validate(str *string) (err string) {
+func validateUrl(str *string) (err string) {
 	if *str == "" {
 		return "URL param is empty"
 	}
@@ -42,22 +42,22 @@ func IsUrl(str *string) bool {
 	return true
 }
 
-func (webUrl *WebUrl) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
+func (webUrl *pageAnalytics) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
 	webUrl.logger.Println("request came in : ", request.RequestURI)
 
 	url := request.URL.Query().Get("url")
 
-	if err := validate(&url); err != "" {
+	if err := validateUrl(&url); err != "" {
 		webUrl.logger.Println("Error :", err)
-		err := map[string]interface{}{"data": err}
-		responseWriter.Header().Set("Content-type", "application/json")
-		responseWriter.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(responseWriter).Encode(err)
+		webUrl.serveResponse(responseWriter, err, http.StatusBadRequest)
 		return
 	}
+	webUrl.serveResponse(responseWriter, *collector.GetAppData(url), http.StatusOK)
+}
 
-	data := *collector.GetAppData(url)
-	webUrl.logger.Println("data :", data)
+func (webUrl *pageAnalytics) serveResponse(responseWriter http.ResponseWriter, payload interface{}, statusCode int) {
+	data := map[string]interface{}{"data": payload}
 	responseWriter.Header().Set("Content-type", "application/json")
+	responseWriter.WriteHeader(statusCode)
 	json.NewEncoder(responseWriter).Encode(data)
 }
