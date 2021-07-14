@@ -29,4 +29,3 @@ func isUrl(str *string) bool {
 	}
 	return true
 }
-

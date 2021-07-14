@@ -1,18 +1,12 @@
 package collector
 
 import (
-	"flag"
-	"fmt"
 	"github.com/gocolly/colly"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
-)
-
-var (
-	appData AppData
 )
 
 type Link struct {
@@ -38,23 +32,11 @@ type AppData struct {
 	HasLogin     bool         `json:"has_login"`
 }
 
-var docTypes = make(map[string]string)
-
-func init() {
-	docTypes[HTML401_STRICT] = `"-//W3C//DTD HTML 4.01//EN"`
-	docTypes[HTML401_TRANSITIONAL] = `"-//W3C//DTD HTML 4.01 Transitional//EN"`
-	docTypes[HTML401_FRAMESET] = `"-//W3C//DTD HTML 4.01 Frameset//EN"`
-	docTypes[XHTML10_STRICT] = `"-//W3C//DTD XHTML 1.0 Strict//EN"`
-	docTypes[XHTML11_TRANSITIONAL] = `"-//W3C//DTD XHTML 1.0 Transitional//EN"`
-	docTypes[XHTML11_FRAMESET] = `"-//W3C//DTD XHTML 1.0 Frameset//EN"`
-	docTypes[XHTML11] = `"-//W3C//DTD XHTML 1.1//EN"`
-	docTypes[HTML5] = `<!DOCTYPE html>`
+func (appData *AppData) AddLink(link Link) {
+	appData.Links = append(appData.Links, link)
 }
 
-func (appData *AppData) AddLink(l Link) {
-	appData.Links = append(appData.Links, l)
-}
-
+// aggregate all results into appData
 func GetAppData(url string) *AppData {
 	appData := &AppData{}
 	appData.setPageInfo(url)
@@ -62,20 +44,18 @@ func GetAppData(url string) *AppData {
 	return appData
 }
 
+// this aggregate html-version,
+//header count and is login page results into the response.
 func (appData *AppData) setPageInfo(url string) {
-	c := colly.NewCollector(
+	collector := colly.NewCollector(
 		colly.IgnoreRobotsTxt(),
 		colly.Async(true),
 	)
-	c.SetRequestTimeout(time.Second * 10)
-	c.AllowURLRevisit = false
+	collector.SetRequestTimeout(time.Second * COLLY_TIMEOUT_DURATION)
+	collector.AllowURLRevisit = false
 
-	c.OnRequest(func(r *colly.Request) {
-		log.Println("visiting", r.URL.String())
-	})
-
-	c.OnHTML("html", func(element *colly.HTMLElement) {
-		//setting up the title
+	collector.OnHTML("html", func(element *colly.HTMLElement) {
+		// setting up the title
 		appData.Title = element.ChildText("title")
 		// set header tags count
 		appData.setHeaderCount(element)
@@ -83,17 +63,18 @@ func (appData *AppData) setPageInfo(url string) {
 		appData.setIsLogin(element)
 	})
 
-	c.OnResponse(func(response *colly.Response) {
+	collector.OnResponse(func(response *colly.Response) {
 		appData.HtmlVersion = setHTMLVersion(string(response.Body))
 	})
 
-	c.Visit(url)
-	c.Wait()
+	collector.Visit(url)
+	collector.Wait()
 }
 
+// counting the header types in the element
 func (appData *AppData) setHeaderCount(element *colly.HTMLElement) {
-	element.ForEach("h1, h2, h3, h4, h5, h6", func(_ int, el *colly.HTMLElement) {
-		switch el.Name {
+	element.ForEach("h1, h2, h3, h4, h5, h6", func(_ int, headerElement *colly.HTMLElement) {
+		switch headerElement.Name {
 		case H1:
 			appData.HeadingCount.H1Count += 1
 		case H2:
@@ -110,52 +91,55 @@ func (appData *AppData) setHeaderCount(element *colly.HTMLElement) {
 	})
 }
 
-func (appData *AppData) setIsLogin(e *colly.HTMLElement) {
-	e.ForEach("input", func(i int, el *colly.HTMLElement) {
-		if el.Attr("type") == "password" {
+// check whether the element has a login element by type="password"
+func (appData *AppData) setIsLogin(element *colly.HTMLElement) {
+	element.ForEach("input", func(i int, inputElement *colly.HTMLElement) {
+		if inputElement.Attr("type") == "password" {
 			appData.HasLogin = true
 		}
 	})
 }
 
-func (appData *AppData) setLinkList(baseUrl string) {
-
-	depth := 2
-	threads := 4
-
-	flag.Parse()
-
-	c := colly.NewCollector(
+// retrieving links associated with the
+//web page with each one's status
+// this uses separate colly collector
+//due to it's different behaviour of functionality compared to others
+func (appData *AppData) setLinkList(baseUrlStr string) {
+	collector := colly.NewCollector(
 		colly.Async(true),
-		colly.MaxDepth(depth),
+		colly.MaxDepth(LINK_LIST_COLLECTOR_DEPTH),
 		colly.IgnoreRobotsTxt(),
 		colly.URLFilters(
 			regexp.MustCompile("https?://.+$"),
 		),
 	)
-	c.SetRequestTimeout(time.Second * 10)
-	c.AllowURLRevisit = false
-	c.AllowURLRevisit = false
+	collector.SetRequestTimeout(time.Second * COLLY_TIMEOUT_DURATION)
+	collector.AllowURLRevisit = false
+	collector.AllowURLRevisit = false
 
-	limitError := c.Limit(&colly.LimitRule{
+	if limitError := collector.Limit(&colly.LimitRule{
 		DomainGlob:  "*",
-		Parallelism: threads,
+		Parallelism: LINK_LIST_COLLECTOR_THREAD_COUNT,
 		RandomDelay: 1 * time.Second,
-	})
-
-	handleError(limitError)
-
+	}); limitError != nil {
+		log.WithFields(log.Fields{
+			"error": limitError,
+		}).Error("Collector LimitRule error")
+	}
 	//// Find and visit all links
-	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		e.Request.Visit(e.Attr("href"))
+	collector.OnHTML("a[href]", func(element *colly.HTMLElement) {
+		element.Request.Visit(element.Attr("href"))
 	})
 
-	c.OnRequest(func(r *colly.Request) {
-		fmt.Println("Visiting", r.URL)
-	})
+	collector.OnError(func(response *colly.Response, err error) {
+		log.WithFields(log.Fields{
+			"url":        response.Request.URL.String(),
+			"status":     response.StatusCode,
+			"error": err,
+		}).Debug("Navigated link error")
 
-	c.OnResponse(func(response *colly.Response) {
-		baseUrl, _ := url.Parse(baseUrl)
+		baseUrl, _ := url.Parse(baseUrlStr)
+
 		link := Link{
 			Url:        response.Request.URL.String(),
 			Status:     response.StatusCode,
@@ -164,8 +148,17 @@ func (appData *AppData) setLinkList(baseUrl string) {
 		appData.AddLink(link)
 	})
 
-	c.Visit(baseUrl)
-	c.Wait()
+	collector.OnResponse(func(response *colly.Response) {
+		baseUrl, _ := url.Parse(baseUrlStr)
+		link := Link{
+			Url:        response.Request.URL.String(),
+			Status:     response.StatusCode,
+			IsInternal: isInternalLink(response.Request.URL, baseUrl),
+		}
+		appData.AddLink(link)
+	})
+	collector.Visit(baseUrlStr)
+	collector.Wait()
 }
 
 // here subdomains considered as external
@@ -173,9 +166,10 @@ func isInternalLink(url *url.URL, baseUrl *url.URL) bool {
 	return baseUrl.Host == url.Host
 }
 
+// identify html version using the doctype
 func setHTMLVersion(html string) string {
 	var version = UNKNOWN
-	for doctype, matcher := range docTypes {
+	for doctype, matcher := range GetHtmlVersions() {
 		match := strings.Contains(html, matcher)
 		if match == true {
 			version = doctype
@@ -183,10 +177,4 @@ func setHTMLVersion(html string) string {
 		}
 	}
 	return version
-}
-
-func handleError(error error) {
-	if error != nil {
-		fmt.Println("Error:", error)
-	}
 }

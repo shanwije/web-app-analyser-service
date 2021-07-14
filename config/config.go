@@ -1,12 +1,12 @@
 package config
 
 import (
-	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
 type Configurations struct {
-	Server       ServerConfigurations
+	Server ServerConfigurations
 }
 
 type ServerConfigurations struct {
@@ -23,11 +23,15 @@ func SetConfigs() {
 	var configuration Configurations
 
 	if err := viper.ReadInConfig(); err != nil {
-		fmt.Printf("Error reading config file, %s", err)
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Fatal("viper configuration reading error")
 	}
 
 	err := viper.Unmarshal(&configuration)
 	if err != nil {
-		fmt.Printf("Unable to decode into struct, %v", err)
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Fatal("viper configuration unmarshalling error")
 	}
 }
