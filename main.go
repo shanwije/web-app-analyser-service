@@ -2,16 +2,25 @@ package main
 
 import (
 	"context"
+	"github.com/spf13/viper"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
+	"web-app-analyser-service/config"
 	"web-app-analyser-service/handlers"
 )
 
-//todo comments, logs, tests, packaging, namingConv, docker, error handling
+//todo comments, logs, tests, packaging, namingConv, docker, error handling, config file, pointers
 func main() {
+
+	config.SetConfigs()
+
+	readTimeOutDuration  := time.Duration(viper.GetInt("server.readTimeout"))
+	idleTimeoutDuration  := time.Duration(viper.GetInt("server.idleTimeout"))
+	timeoutContextDuration := time.Duration(viper.GetInt("server.TimeoutContextDuration"))
+
 	logger := log.New(os.Stdout, "web-app-analyser-service", log.LstdFlags)
 	webUrlHandler := handlers.NewPageAnalytics(logger)
 
@@ -19,10 +28,10 @@ func main() {
 	serveMux.Handle("/", webUrlHandler)
 
 	server := &http.Server{
-		Addr:        ":8080",
+		Addr:        ":" + viper.GetString("server.port"),
 		Handler:     serveMux,
-		IdleTimeout: 300 * time.Second,
-		ReadTimeout: 120 * time.Second,
+		IdleTimeout:  idleTimeoutDuration * time.Second,
+		ReadTimeout: readTimeOutDuration * time.Second,
 	}
 
 	go func() {
@@ -30,7 +39,6 @@ func main() {
 		if err != nil {
 			logger.Fatal(err)
 		}
-		log.Println("Server started")
 	}()
 
 	signalChannel := make(chan os.Signal)
@@ -40,6 +48,7 @@ func main() {
 	sig := <-signalChannel
 	log.Println("Received terminate signal, shutting down : ", sig)
 
-	timeoutContext, _ := context.WithDeadline(context.Background(), time.Now().Add(3*time.Second))
+	timeoutContext, _ := context.WithDeadline(context.Background(), time.Now().Add(timeoutContextDuration*time.Second))
 	server.Shutdown(timeoutContext)
 }
+
