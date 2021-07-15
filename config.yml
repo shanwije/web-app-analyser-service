@@ -1,0 +1,5 @@
+server:
+  port: 8080
+  idleTimeout: 300,
+  readTimeout: 120,
+  timeoutContextDuration: 60
