@@ -67,6 +67,12 @@ func (appData *AppData) setPageInfo(url string) {
 		appData.HtmlVersion = setHTMLVersion(string(response.Body))
 	})
 
+	collector.OnError(func(response *colly.Response, err error) {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("Invalid URL")
+	})
+
 	collector.Visit(url)
 	collector.Wait()
 }

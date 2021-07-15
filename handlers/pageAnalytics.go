@@ -40,13 +40,13 @@ func setupHeader(responseWriter http.ResponseWriter) {
 	responseWriter.Header().Set("Content-Type", "application/json")
 	responseWriter.Header().Set("Access-Control-Allow-Origin", "*")
 	responseWriter.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-	responseWriter.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+	responseWriter.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, " +
+		"Accept-Encoding, X-CSRF-Token, Authorization")
 }
 
 // sending response back
 func serveResponse(responseWriter http.ResponseWriter, payload interface{}, statusCode int) {
 	data := map[string]interface{}{"data": payload}
-	responseWriter.Header().Set("Content-type", "application/json")
 	responseWriter.WriteHeader(statusCode)
 	json.NewEncoder(responseWriter).Encode(data)
 }
