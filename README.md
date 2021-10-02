@@ -1,4 +1,4 @@
-# web-app-analyser-service
+# web scraper
 
 To run this application it is suggested to have docker installed in the system.
 To start Server using following command
